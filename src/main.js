@@ -1,9 +1,3 @@
-const style = document.createElement('style');
-style.innerHTML = `
-    .bottom-tab { @apply px-3 py-2 text-sm text-gray-500 dark:text-gray-400 border-b-2 border-transparent transition-colors; }
-    .active-bottom-tab { @apply text-blue-600 dark:text-white border-blue-600 dark:border-blue-500; }
-`;
-document.head.appendChild(style);
 
 document.addEventListener('DOMContentLoaded', () => {
     const socket = io();
@@ -56,6 +50,10 @@ document.addEventListener('DOMContentLoaded', () => {
         themeToggleBtn: document.getElementById('theme-toggle-btn'),
         themeIconSun: document.getElementById('theme-icon-sun'),
         themeIconMoon: document.getElementById('theme-icon-moon'),
+        // AI UI Elements
+        aiMessages: document.getElementById('ai-messages'),
+        aiInput: document.getElementById('ai-input'),
+        sendAiBtn: document.getElementById('send-ai-btn'),
     };
 
     // --- NEW THEME LOGIC ---
@@ -122,6 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.toggleCamBtn.addEventListener('click', toggleCam);
         ui.shareScreenBtn.addEventListener('click', toggleScreenShare);
         ui.themeToggleBtn.addEventListener('click', toggleTheme);
+
+        // AI Event Listeners
+        ui.sendAiBtn.addEventListener('click', sendAiMessage);
+        ui.aiInput.addEventListener('keypress', (e) => {
+             if (e.key === 'Enter') sendAiMessage();
+        });
+
         setupBottomPanelTabs();
         setupResizer();
         setupSidebarToggle();
@@ -138,12 +143,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const setupBottomPanelTabs = () => ui.bottomPaneTabs.addEventListener('click', (e) => {
         if (e.target.matches('.bottom-tab')) {
-            ui.bottomPaneTabs.querySelector('.active-bottom-tab')?.classList.remove('active-bottom-tab');
-            e.target.classList.add('active-bottom-tab');
+            // Update active styles using direct classes instead of @apply
+            ui.bottomPaneTabs.querySelectorAll('.bottom-tab').forEach(tab => {
+                tab.classList.remove('bg-white', 'dark:bg-[#1e1e1e]', 'border-gray-200', 'dark:border-gray-700/50', 'text-blue-600', 'dark:text-white', 'border-b-0');
+                tab.classList.add('text-gray-600', 'dark:text-gray-400', 'hover:bg-white', 'dark:hover:bg-[#333]');
+            });
+
+            e.target.classList.remove('text-gray-600', 'dark:text-gray-400', 'hover:bg-white', 'dark:hover:bg-[#333]');
+            e.target.classList.add('bg-white', 'dark:bg-[#1e1e1e]', 'border-gray-200', 'dark:border-gray-700/50', 'text-blue-600', 'dark:text-white', 'border-b-0');
+
+            // Show panel
             document.querySelectorAll('.bottom-panel').forEach(p => p.classList.add('hidden'));
             const panel = document.getElementById(e.target.dataset.panel);
             panel.classList.remove('hidden');
-            if (['chat-panel', 'video-panel', 'terminal-panel', 'activity-panel'].includes(e.target.dataset.panel)) {
+            if (['chat-panel', 'video-panel', 'terminal-panel', 'activity-panel', 'ai-panel'].includes(e.target.dataset.panel)) {
                 panel.classList.add('flex', 'flex-col');
             }
         }
@@ -189,6 +202,13 @@ document.addEventListener('DOMContentLoaded', () => {
             roomId: state.currentRoomId,
             username: state.username
         });
+
+        // Set initial active tab styling manually since we removed the @apply block
+        const terminalTab = ui.bottomPaneTabs.querySelector('[data-panel="terminal-panel"]');
+        if (terminalTab) {
+             terminalTab.classList.remove('text-gray-600', 'dark:text-gray-400', 'hover:bg-white', 'dark:hover:bg-[#333]');
+             terminalTab.classList.add('bg-white', 'dark:bg-[#1e1e1e]', 'border-gray-200', 'dark:border-gray-700/50', 'text-blue-600', 'dark:text-white', 'border-b-0');
+        }
     }
 
     const renderFileExplorer = () => {
@@ -196,8 +216,8 @@ document.addEventListener('DOMContentLoaded', () => {
             `<div class="flex justify-between items-center group p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer" data-path="${path}">
                 <span class="file-name text-gray-700 dark:text-gray-300 group-hover:text-black dark:group-hover:text-white">${path}</span>
                 <div class="hidden group-hover:flex items-center">
-                    <button class="rename-file-btn text-xs text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white mr-1" data-path="${path}">✏️</button>
-                    <button class="delete-file-btn text-xs text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white" data-path="${path}">🗑️</button>
+                    <button class="rename-file-btn text-xs text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white mr-1" data-path="${path}" title="Rename">Edit</button>
+                    <button class="delete-file-btn text-xs text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white" data-path="${path}" title="Delete">Del</button>
                 </div>
             </div>`
         ).join('');
@@ -364,6 +384,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // --- AI LOGIC ---
+    const sendAiMessage = () => {
+        const message = ui.aiInput.value.trim();
+        if (!message) return;
+
+        const contextCode = state.editorInstance ? state.editorInstance.getValue() : '';
+
+        // Add user message to UI
+        const userMsgDiv = document.createElement('div');
+        userMsgDiv.className = 'text-right my-2';
+        userMsgDiv.innerHTML = `<span class="bg-blue-600 text-white px-3 py-1 rounded-lg inline-block">${message}</span>`;
+        ui.aiMessages.appendChild(userMsgDiv);
+        ui.aiMessages.scrollTop = ui.aiMessages.scrollHeight;
+
+        ui.aiInput.value = '';
+
+        // Add loading indicator
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'ai-loading';
+        loadingDiv.className = 'text-left my-2';
+        loadingDiv.innerHTML = `<span class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-1 rounded-lg inline-block italic">Thinking...</span>`;
+        ui.aiMessages.appendChild(loadingDiv);
+        ui.aiMessages.scrollTop = ui.aiMessages.scrollHeight;
+
+        socket.emit('ask-ai', { message, context: contextCode });
+    };
+
+    socket.on('ai-response', ({ message }) => {
+        const loadingDiv = document.getElementById('ai-loading');
+        if (loadingDiv) loadingDiv.remove();
+
+        const aiMsgDiv = document.createElement('div');
+        aiMsgDiv.className = 'text-left my-2';
+        // Simple markdown parsing for code blocks could be added here,
+        // for now we just use whitespace-pre-wrap style in CSS if needed,
+        // or just standard text.
+        aiMsgDiv.innerHTML = `<span class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-1 rounded-lg inline-block whitespace-pre-wrap">${message}</span>`;
+        ui.aiMessages.appendChild(aiMsgDiv);
+        ui.aiMessages.scrollTop = ui.aiMessages.scrollHeight;
+    });
+    // ----------------
+
     const downloadProjectAsZip = () => {
         const zip = new JSZip();
         Object.keys(state.files).forEach(path => zip.file(path, state.files[path]));
@@ -397,7 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             console.error("Could not get user media", error);
             ui.videoStatus.textContent = "Camera/Mic access denied. Video chat is disabled.";
-            logActivity("Camera/Mic access denied.", '🚫');
+            logActivity("Camera/Mic access denied.", 'Error');
             return null;
         }
     }
@@ -432,7 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 screenTrack.onended = () => stopScreenShare();
             } catch (err) {
                 console.error("Screen share error:", err);
-                logActivity("Could not start screen share.", '🖥️');
+                logActivity("Could not start screen share.", 'Screen');
             }
         }
     }
@@ -501,7 +563,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }) => {
         state.participants[user.id] = user;
         renderParticipants();
-        logActivity(`${user.username} has joined.`, '➡️');
+        logActivity(`${user.username} has joined.`, 'Join');
         if (state.localStream) {
             const pc = createPeerConnection(user.id);
             pc.createOffer().then(offer => {
@@ -518,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
         userId
     }) => {
         const user = state.participants[userId];
-        if (user) logActivity(`${user.username} has left.`, '⬅️');
+        if (user) logActivity(`${user.username} has left.`, 'Left');
         delete state.participants[userId];
         renderParticipants();
         state.webRTCPeers[userId]?.close();
@@ -595,11 +657,11 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('execution-notification', ({
         username,
         file
-    }) => logActivity(`${username} ran ${file}`, '🧑‍💻'));
+    }) => logActivity(`${username} ran ${file}`, 'Run'));
 
     socket.on('paste-notification', ({
         username
-    }) => logActivity(`${username} pasted a large block of code.`, '📋'));
+    }) => logActivity(`${username} pasted a large block of code.`, 'Paste'));
 
     socket.on('receive-chat-message', ({
         user,

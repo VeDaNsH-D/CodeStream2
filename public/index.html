@@ -173,14 +173,15 @@
 
       <!-- Right Pane -->
       <div id="right-pane" class="w-1/3 flex-shrink-0 flex flex-col bg-gray-100 dark:bg-[#202124]">
-        <div id="bottom-pane-tabs" class="flex items-center space-x-2 px-2 border-b border-gray-200 dark:border-gray-700/50 flex-shrink-0">
-          <button data-panel="terminal-panel" class="bottom-tab active-bottom-tab">Terminal</button>
-          <button data-panel="chat-panel" class="bottom-tab">Chat</button>
-          <button data-panel="participants-panel" class="bottom-tab">Participants</button>
-          <button data-panel="video-panel" class="bottom-tab">Video</button>
-          <button data-panel="activity-panel" class="bottom-tab">Activity Log</button>
+        <div id="bottom-pane-tabs" class="flex items-center space-x-1 px-2 pt-2 border-b border-gray-200 dark:border-gray-700/50 flex-shrink-0 bg-gray-100 dark:bg-[#202124]">
+          <button data-panel="terminal-panel" class="bottom-tab px-4 py-2 text-sm font-medium rounded-t-md text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-[#333] transition-colors border-t border-l border-r border-transparent">Terminal</button>
+          <button data-panel="ai-panel" class="bottom-tab px-4 py-2 text-sm font-medium rounded-t-md text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-[#333] transition-colors border-t border-l border-r border-transparent">AI Assistant</button>
+          <button data-panel="chat-panel" class="bottom-tab px-4 py-2 text-sm font-medium rounded-t-md text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-[#333] transition-colors border-t border-l border-r border-transparent">Chat</button>
+          <button data-panel="participants-panel" class="bottom-tab px-4 py-2 text-sm font-medium rounded-t-md text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-[#333] transition-colors border-t border-l border-r border-transparent">Participants</button>
+          <button data-panel="video-panel" class="bottom-tab px-4 py-2 text-sm font-medium rounded-t-md text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-[#333] transition-colors border-t border-l border-r border-transparent">Video</button>
+          <button data-panel="activity-panel" class="bottom-tab px-4 py-2 text-sm font-medium rounded-t-md text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-[#333] transition-colors border-t border-l border-r border-transparent">Activity</button>
         </div>
-        <div class="flex-1 p-2 overflow-auto bg-white dark:bg-black/20">
+        <div class="flex-1 p-2 overflow-auto bg-white dark:bg-[#1e1e1e]">
           <!-- Terminal -->
           <div id="terminal-panel" class="bottom-panel h-full flex flex-col">
             <div class="flex-shrink-0 mb-2">
@@ -191,7 +192,21 @@
                 class="w-full bg-gray-50 dark:bg-[#3c4043] border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
               ></textarea>
             </div>
-            <div id="terminal" class="panel-content-box p-2 text-xs font-mono text-gray-900 dark:text-white whitespace-pre-wrap flex-grow"></div>
+            <div id="terminal" class="panel-content-box p-2 text-xs font-mono text-gray-900 dark:text-white whitespace-pre-wrap flex-grow border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-[#1e1e1e]"></div>
+          </div>
+
+          <!-- AI Assistant -->
+          <div id="ai-panel" class="bottom-panel h-full hidden flex flex-col">
+            <div id="ai-messages" class="panel-content-box p-2 flex-grow text-sm space-y-2 mb-2 pr-1 overflow-y-auto"></div>
+             <div class="flex items-center space-x-2">
+                <input
+                  id="ai-input"
+                  type="text"
+                  placeholder="Ask about your code..."
+                  class="flex-1 bg-gray-50 dark:bg-[#3c4043] border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button id="send-ai-btn" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-sm">Send</button>
+             </div>
           </div>
 
           <!-- Chat -->
