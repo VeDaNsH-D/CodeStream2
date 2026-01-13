@@ -249,6 +249,34 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('ask-ai', async ({ message, context }) => {
+        if (!currentUser) return;
+
+        try {
+            const prompt = `Code Context:\n${context || 'No code provided.'}\n\nUser Question: ${message}`;
+
+            const response = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+                {
+                    contents: [{
+                        parts: [{ text: prompt }]
+                    }]
+                }
+            );
+
+            const aiText = response.data.candidates[0].content.parts[0].text;
+
+            // Send back to the specific user who asked
+            socket.emit('ai-response', { message: aiText });
+
+        } catch (error) {
+            console.error('AI Error:', error.response?.data || error.message);
+            socket.emit('ai-response', {
+                message: "I'm sorry, I encountered an error processing your request. Please check the server logs or API key configuration."
+            });
+        }
+    });
+
     // --- WebRTC Signaling ---
     const relaySignal = (event, payload) => {
         const { to } = payload;
