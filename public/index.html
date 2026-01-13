@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Code Stream</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: #4a4a52;
+    }
+    .light ::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+    }
+  </style>
+</head>
+<body class="bg-white dark:bg-[#1e1e1e] text-gray-800 dark:text-gray-200 overflow-hidden">
+
+  <!-- Entry Modal -->
+  <div id="entry-modal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div class="bg-gray-100 dark:bg-[#252526] border border-gray-300 dark:border-blue-500/30 p-8 rounded-lg shadow-2xl w-full max-w-md">
+      <h2 class="text-2xl font-bold text-center text-gray-900 dark:text-white mb-6">Code Stream</h2>
+      <div class="space-y-4">
+        <input
+          id="username-input"
+          type="text"
+          placeholder="Enter your name"
+          class="w-full bg-white dark:bg-[#3c4043] border border-gray-300 dark:border-gray-600 rounded-md px-4 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+        />
+        <button
+          id="create-room-btn"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition duration-200"
+        >
+          Create New Room
+        </button>
+        <div class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-gray-300 dark:border-gray-700"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="bg-gray-100 dark:bg-[#252526] px-2 text-gray-500 dark:text-gray-400">or</span>
+          </div>
+        </div>
+        <div class="flex space-x-2">
+          <input
+            id="room-id-input"
+            type="text"
+            placeholder="Enter Room ID"
+            class="w-full bg-white dark:bg-[#3c4043] border border-gray-300 dark:border-gray-600 rounded-md px-4 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+          />
+          <button
+            id="join-room-btn"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition"
+          >
+            Join
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="hidden h-screen w-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-gray-100 dark:bg-[#252526] flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700/50 flex-shrink-0 z-30">
+      <div class="flex items-center space-x-3">
+        <button
+          id="sidebar-toggle-btn"
+          class="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white"
+          title="Toggle Explorer"
+        >
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+        </button>
+        <h1 class="text-xl font-bold text-gray-900 dark:text-white">Code Stream</h1>
+      </div>
+      <div class="flex items-center space-x-4">
+        <button
+          id="theme-toggle-btn"
+          class="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white"
+          title="Toggle Theme"
+        >
+          <svg id="theme-icon-sun" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z">
+            </path>
+          </svg>
+          <svg id="theme-icon-moon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z">
+            </path>
+          </svg>
+        </button>
+        <button
+          id="run-code-btn"
+          class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-4 rounded-md text-sm transition"
+        >
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+              clip-rule="evenodd"></path>
+          </svg>
+          <span>Run</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex-1 flex flex-row overflow-hidden relative">
+
+      <!-- Sidebar -->
+      <aside
+        id="file-explorer-sidebar"
+        class="absolute top-0 left-0 h-full w-60 bg-white dark:bg-[#252526] z-20 flex flex-col transform -translate-x-full transition-transform duration-300 ease-in-out border-r border-gray-200 dark:border-gray-700/50"
+      >
+        <div class="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-700/50">
+          <h3 class="text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">Explorer</h3>
+          <div class="flex items-center space-x-2">
+            <button
+              id="new-file-btn"
+              class="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white"
+              title="New File"
+            >
+              +
+            </button>
+            <button
+              id="download-zip-btn"
+              class="text-gray-500 dark:text-gray-400 hover:text-black dark:hover:text-white"
+              title="Download Project as ZIP"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="file-explorer" class="text-sm space-y-1 p-2 overflow-y-auto"></div>
+      </aside>
+
+      <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/50 z-10 md:hidden"></div>
+
+      <!-- Editor Pane -->
+      <div id="editor-pane" class="w-2/3 flex flex-col min-w-0 bg-gray-50 dark:bg-[#1e1e1e]">
+        <div id="tabs-container" class="bg-gray-200 dark:bg-[#252526] flex-shrink-0 flex items-center border-b border-gray-300 dark:border-gray-700/50"></div>
+        <div id="editor-container" class="flex-grow relative overflow-hidden">
+          <div id="editor" class="w-full h-full"></div>
+        </div>
+      </div>
+
+      <!-- Resizer -->
+      <div id="resizer" class="w-2 bg-gray-300 dark:bg-gray-700/50 cursor-ew-resize hover:bg-blue-500 transition-colors duration-200 flex-shrink-0"></div>
+
+      <!-- Right Pane -->
+      <div id="right-pane" class="w-1/3 flex-shrink-0 flex flex-col bg-gray-100 dark:bg-[#202124]">
+        <div id="bottom-pane-tabs" class="flex items-center space-x-2 px-2 border-b border-gray-200 dark:border-gray-700/50 flex-shrink-0">
+          <button data-panel="terminal-panel" class="bottom-tab active-bottom-tab">Terminal</button>
+          <button data-panel="chat-panel" class="bottom-tab">Chat</button>
+          <button data-panel="participants-panel" class="bottom-tab">Participants</button>
+          <button data-panel="video-panel" class="bottom-tab">Video</button>
+          <button data-panel="activity-panel" class="bottom-tab">Activity Log</button>
+        </div>
+        <div class="flex-1 p-2 overflow-auto bg-white dark:bg-black/20">
+          <!-- Terminal -->
+          <div id="terminal-panel" class="bottom-panel h-full flex flex-col">
+            <div class="flex-shrink-0 mb-2">
+              <label for="stdin-input" class="text-xs text-gray-500 dark:text-gray-400">Standard Input (stdin)</label>
+              <textarea
+                id="stdin-input"
+                rows="3"
+                class="w-full bg-gray-50 dark:bg-[#3c4043] border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+              ></textarea>
+            </div>
+            <div id="terminal" class="panel-content-box p-2 text-xs font-mono text-gray-900 dark:text-white whitespace-pre-wrap flex-grow"></div>
+          </div>
+
+          <!-- Chat -->
+          <div id="chat-panel" class="bottom-panel h-full hidden flex flex-col">
+            <div id="chat-messages" class="panel-content-box p-2 flex-grow text-sm space-y-2 mb-2 pr-1"></div>
+            <input
+              id="chat-input"
+              type="text"
+              placeholder="Type a message and press Enter..."
+              class="w-full bg-gray-50 dark:bg-[#3c4043] border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <!-- Participants -->
+          <div id="participants-panel" class="bottom-panel h-full hidden">
+            <div id="participant-list" class="panel-content-box p-2 space-y-2"></div>
+          </div>
+
+          <!-- Video -->
+          <div id="video-panel" class="bottom-panel h-full hidden flex flex-col">
+            <div id="video-status" class="text-center text-gray-500 dark:text-gray-400 text-sm p-4"></div>
+            <div id="video-grid" class="panel-content-box p-2 grid grid-cols-1 md:grid-cols-2 gap-2 flex-grow"></div>
+            <div id="video-controls" class="flex-shrink-0 flex items-center justify-center space-x-4 p-2 bg-black/20 rounded-b-md">
+              <button id="toggle-mic-btn" class="p-2 rounded-full bg-gray-600 hover:bg-gray-500 text-white">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M5 4a1 1 0 011 1v4a1 1 0 11-2 0V5a1 1 0 011-1zm10 0a1 1 0 011 1v4a1 1 0 11-2 0V5a1 1 0 011-1zM10 2a2 2 0 012 2v8a2 2 0 11-4 0V4a2 2 0 012-2zm-5 8a5 5 0 1010 0V5a5 5 0 10-10 0v5z"></path>
+                </svg>
+              </button>
+              <button id="toggle-cam-btn" class="p-2 rounded-full bg-gray-600 hover:bg-gray-500 text-white">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
+                  <path fill-rule="evenodd"
+                    d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
+                    clip-rule="evenodd"></path>
+                </svg>
+              </button>
+              <button id="share-screen-btn" class="p-2 rounded-full bg-gray-600 hover:bg-gray-500 text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                  </path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Activity Log -->
+          <div id="activity-panel" class="bottom-panel h-full hidden flex flex-col">
+            <div id="activity-log" class="panel-content-box p-2 text-sm space-y-1 font-mono"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="main.min.js"></script>
+</body>
+</html>
