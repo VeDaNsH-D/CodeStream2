@@ -4,12 +4,50 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const axios = require('axios');
+const session = require('express-session');
+const SequelizeStore = require('connect-session-sequelize')(session.Store);
+
+// Database & Auth
+const { sequelize, Room, File, Message, initDB } = require('./src/db');
+const passport = require('./src/auth/passport');
+const authRoutes = require('./src/auth/routes');
 
 const app = express();
 const server = http.createServer(app);
 
+// Initialize DB
+initDB();
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Session Setup
+const sessionStore = new SequelizeStore({
+    db: sequelize,
+});
+// Sync session table
+sessionStore.sync();
+
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'supersecretkey',
+    resave: false,
+    saveUninitialized: false,
+    store: sessionStore,
+    cookie: {
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
+
+// Passport Setup
+app.use(passport.initialize());
+app.use(passport.session());
+
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Auth Routes
+app.use('/auth', authRoutes);
 
 const io = new Server(server, {
     cors: {
@@ -19,7 +57,11 @@ const io = new Server(server, {
     transports: ['websocket', 'polling']
 });
 
-let rooms = {};
+// We still need to track connected users per room in memory for presence (participants list),
+// but the room data itself (files, messages) comes from DB.
+// Structure: { roomId: { participants: { socketId: { ...userData } } } }
+let activeRooms = {};
+
 const languageMap = {
     'javascript': 63,
     'python': 71,
@@ -107,73 +149,147 @@ io.on('connection', (socket) => {
     let currentRoomId = null;
     let currentUser = null;
 
-    socket.on('join-room', ({ roomId, username }) => {
+    socket.on('join-room', async ({ roomId, username, userId }) => { // Expect userId now if available, otherwise just username
         // Leave previous room if any
-        if (currentRoomId && rooms[currentRoomId]?.participants) {
+        if (currentRoomId && activeRooms[currentRoomId]?.participants) {
             socket.leave(currentRoomId);
-            delete rooms[currentRoomId].participants[socket.id];
+            delete activeRooms[currentRoomId].participants[socket.id];
             io.to(currentRoomId).emit('user-left', { userId: socket.id });
         }
 
         currentRoomId = roomId;
+        // Use provided userId or fallback to socket id if guest (though logic should encourage login)
+        // Ideally, we get user info from session if we shared session with socket.io,
+        // but for now we'll trust the client sending the username/ID after login.
+
         currentUser = {
-            id: socket.id,
+            id: socket.id, // Socket ID for WebRTC/Routing
+            dbUserId: userId, // Actual DB ID if logged in
             username,
             color: getRandomColor()
         };
 
-        // Create room if it doesn't exist
-        if (!rooms[roomId]) {
-            rooms[roomId] = {
-                participants: {},
-                files: {
-                    'main.py': `print("Hello, collaborative world!")`
-                }
+        // Create active room tracking if not exists
+        if (!activeRooms[roomId]) {
+            activeRooms[roomId] = {
+                participants: {}
             };
         }
 
         socket.join(roomId);
-        rooms[roomId].participants[socket.id] = currentUser;
+        activeRooms[roomId].participants[socket.id] = currentUser;
 
-        // Send initial state to the new user
-        socket.emit('initial-sync', {
-            files: rooms[roomId].files,
-            participants: rooms[roomId].participants,
-            currentUser: currentUser
-        });
+        // DB Operations: Find/Create Room and Load State
+        try {
+            const [room, created] = await Room.findOrCreate({
+                where: { id: roomId },
+                defaults: { name: roomId }
+            });
 
-        // Notify others in the room
-        socket.to(roomId).emit('user-joined', {
-            user: currentUser
-        });
-    });
+            if (created) {
+                // Initialize default file
+                await File.create({
+                    roomId: roomId,
+                    filename: 'main.py',
+                    content: `print("Hello, collaborative world!")`
+                });
+            }
 
-    socket.on('file-add', ({ path }) => {
-        if (rooms[currentRoomId]) {
-            rooms[currentRoomId].files[path] = '';
-            io.to(currentRoomId).emit('file-add', { path });
+            // Fetch Files
+            const dbFiles = await File.findAll({ where: { roomId } });
+            const filesObj = {};
+            dbFiles.forEach(f => {
+                filesObj[f.filename] = f.content;
+            });
+
+            // Fetch Chat History (last 50 messages)
+            const dbMessages = await Message.findAll({
+                where: { roomId },
+                order: [['createdAt', 'ASC']],
+                limit: 50
+            });
+            const chatHistory = dbMessages.map(m => ({
+                user: { username: m.username }, // minimal user obj for UI
+                message: m.content,
+                timestamp: m.createdAt
+            }));
+
+            // Send initial state to the new user
+            socket.emit('initial-sync', {
+                files: filesObj,
+                participants: activeRooms[roomId].participants,
+                currentUser: currentUser,
+                chatHistory: chatHistory
+            });
+
+            // Notify others in the room
+            socket.to(roomId).emit('user-joined', {
+                user: currentUser
+            });
+
+        } catch (err) {
+            console.error("Error joining room:", err);
+            socket.emit('error', 'Failed to join room properly.');
         }
     });
 
-    socket.on('file-rename', ({ oldPath, newPath }) => {
-        if (rooms[currentRoomId]?.files[oldPath] !== undefined) {
-            rooms[currentRoomId].files[newPath] = rooms[currentRoomId].files[oldPath];
-            delete rooms[currentRoomId].files[oldPath];
-            io.to(currentRoomId).emit('file-rename', { oldPath, newPath });
+    socket.on('file-add', async ({ path }) => {
+        if (currentRoomId) {
+            try {
+                await File.create({
+                    roomId: currentRoomId,
+                    filename: path,
+                    content: ''
+                });
+                io.to(currentRoomId).emit('file-add', { path });
+            } catch (err) {
+                console.error("Error adding file:", err);
+            }
         }
     });
 
-    socket.on('file-delete', ({ path }) => {
-        if (rooms[currentRoomId]?.files[path] !== undefined) {
-            delete rooms[currentRoomId].files[path];
-            io.to(currentRoomId).emit('file-delete', { path });
+    socket.on('file-rename', async ({ oldPath, newPath }) => {
+        if (currentRoomId) {
+            try {
+                const file = await File.findOne({ where: { roomId: currentRoomId, filename: oldPath } });
+                if (file) {
+                    file.filename = newPath;
+                    await file.save();
+                    io.to(currentRoomId).emit('file-rename', { oldPath, newPath });
+                }
+            } catch (err) {
+                console.error("Error renaming file:", err);
+            }
         }
     });
 
-    socket.on('code-change', ({ path, newCode }) => {
-        if (rooms[currentRoomId]?.files[path] !== undefined) {
-            rooms[currentRoomId].files[path] = newCode;
+    socket.on('file-delete', async ({ path }) => {
+        if (currentRoomId) {
+            try {
+                await File.destroy({ where: { roomId: currentRoomId, filename: path } });
+                io.to(currentRoomId).emit('file-delete', { path });
+            } catch (err) {
+                console.error("Error deleting file:", err);
+            }
+        }
+    });
+
+    socket.on('code-change', async ({ path, newCode }) => {
+        if (currentRoomId) {
+            // Broadcast immediately for responsiveness
             socket.to(currentRoomId).emit('code-change', { path, newCode });
+
+            // Debounce save to DB (or just save every time for simplicity in this MVP)
+            // For production scaling, you'd want a redis cache or debounce mechanism here.
+            try {
+                const file = await File.findOne({ where: { roomId: currentRoomId, filename: path } });
+                if (file) {
+                    file.content = newCode;
+                    await file.save();
+                }
+            } catch (err) {
+                console.error("Error saving code change:", err);
+            }
         }
     });
 
@@ -232,8 +348,20 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('send-chat-message', ({ message }) => {
-        if (currentUser) {
+    socket.on('send-chat-message', async ({ message }) => {
+        if (currentUser && currentRoomId) {
+            // Save to DB
+            try {
+                await Message.create({
+                    roomId: currentRoomId,
+                    userId: currentUser.dbUserId || null,
+                    username: currentUser.username,
+                    content: message
+                });
+            } catch (err) {
+                console.error("Error saving message:", err);
+            }
+
             io.to(currentRoomId).emit('receive-chat-message', {
                 user: currentUser,
                 message
@@ -280,7 +408,7 @@ io.on('connection', (socket) => {
     // --- WebRTC Signaling ---
     const relaySignal = (event, payload) => {
         const { to } = payload;
-        if (rooms[currentRoomId]?.participants[to]) {
+        if (activeRooms[currentRoomId]?.participants[to]) {
             socket.to(to).emit(event, { ...payload,
                 from: socket.id
             });
@@ -293,14 +421,14 @@ io.on('connection', (socket) => {
 
 
     socket.on('disconnect', () => {
-        if (currentRoomId && rooms[currentRoomId]?.participants[socket.id]) {
-            delete rooms[currentRoomId].participants[socket.id];
+        if (currentRoomId && activeRooms[currentRoomId]?.participants[socket.id]) {
+            delete activeRooms[currentRoomId].participants[socket.id];
             io.to(currentRoomId).emit('user-left', {
                 userId: socket.id
             });
-            // If the room is empty, delete it
-            if (Object.keys(rooms[currentRoomId].participants).length === 0) {
-                delete rooms[currentRoomId];
+            // If the room is empty, we delete the active memory of it, but DB persists
+            if (Object.keys(activeRooms[currentRoomId].participants).length === 0) {
+                delete activeRooms[currentRoomId];
             }
         }
     });
