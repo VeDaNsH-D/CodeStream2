@@ -8,7 +8,7 @@ const session = require('express-session');
 const SequelizeStore = require('connect-session-sequelize')(session.Store);
 
 // Database & Auth
-const { sequelize, Room, File, Message, initDB } = require('./src/db');
+const { sequelize, Room, File, Message, User, initDB } = require('./src/db');
 const passport = require('./src/auth/passport');
 const authRoutes = require('./src/auth/routes');
 
@@ -48,6 +48,29 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Auth Routes
 app.use('/auth', authRoutes);
+
+// User Rooms API
+app.get('/api/user/rooms', async (req, res) => {
+    if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        const user = await User.findByPk(req.user.id, {
+            include: [{
+                model: Room,
+                as: 'joinedRooms',
+                attributes: ['id', 'name', 'updatedAt'],
+                through: { attributes: [] }
+            }],
+            order: [[{ model: Room, as: 'joinedRooms' }, 'updatedAt', 'DESC']]
+        });
+        res.json({ rooms: user ? user.joinedRooms : [] });
+    } catch (err) {
+        console.error("Error fetching rooms:", err);
+        res.status(500).json({ error: 'Failed to fetch room history' });
+    }
+});
 
 const io = new Server(server, {
     cors: {
@@ -185,6 +208,20 @@ io.on('connection', (socket) => {
                 where: { id: roomId },
                 defaults: { name: roomId }
             });
+
+            if (currentUser.dbUserId) {
+                try {
+                    const dbUser = await User.findByPk(currentUser.dbUserId);
+                    if (dbUser) {
+                        await room.addMember(dbUser);
+                        // Update timestamp so it rises to top of history
+                        room.changed('updatedAt', true);
+                        await room.save();
+                    }
+                } catch (memberErr) {
+                    console.error("Error adding member to room:", memberErr);
+                }
+            }
 
             if (created) {
                 // Initialize default file
@@ -436,5 +473,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 Code Stream server running on port ${PORT}`);
+    console.log(`Code Stream server running on port ${PORT}`);
 });

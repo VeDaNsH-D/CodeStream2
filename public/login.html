@@ -131,10 +131,10 @@
 
         <div class="divider"><span>OR</span></div>
 
-        <button class="social-btn github-btn" onclick="window.location.href='/auth/github'">
+        <button class="social-btn github-btn" id="github-login-btn">
             Continue with GitHub
         </button>
-        <button class="social-btn" onclick="window.location.href='/auth/google'">
+        <button class="social-btn" id="google-login-btn">
             Continue with Google
         </button>
 
@@ -144,6 +144,16 @@
     </div>
 
     <script>
+        document.getElementById('github-login-btn').addEventListener('click', () => {
+             // In a real scenario, you might check if configured, but here we just try
+             // and if it 404s (not configured), the user will see that.
+             window.location.href='/auth/github';
+        });
+
+        document.getElementById('google-login-btn').addEventListener('click', () => {
+             window.location.href='/auth/google';
+        });
+
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('username').value;

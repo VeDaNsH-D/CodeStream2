@@ -56,6 +56,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         fileExplorer: document.getElementById('file-explorer'),
         newFileBtn: document.getElementById('new-file-btn'),
         downloadZipBtn: document.getElementById('download-zip-btn'),
+        // Activity Bar Elements
+        activityFilesBtn: document.getElementById('activity-files-btn'),
+        activityHistoryBtn: document.getElementById('activity-history-btn'),
+        fileExplorerView: document.getElementById('file-explorer-view'),
+        historyView: document.getElementById('history-view'),
+        historyList: document.getElementById('history-list'),
+        refreshHistoryBtn: document.getElementById('refresh-history-btn'),
+
         tabsContainer: document.getElementById('tabs-container'),
         editorPane: document.getElementById('editor-pane'),
         editorContainer: document.getElementById('editor-container'),
@@ -113,13 +121,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         applyTheme(newTheme);
     }
 
-    const logActivity = (message, icon = '•') => {
+    const logActivity = (message, iconType = 'info') => {
         const logEntry = document.createElement('div');
         const timestamp = new Date().toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit'
         });
-        logEntry.innerHTML = `<span class="text-gray-500 dark:text-gray-400">${timestamp}</span> <span class="text-blue-400">${icon}</span> <span>${message}</span>`;
+
+        let iconHtml = '';
+        if (iconType === 'Join') iconHtml = `<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>`;
+        else if (iconType === 'Left') iconHtml = `<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>`;
+        else if (iconType === 'Run') iconHtml = `<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+        else if (iconType === 'Paste') iconHtml = `<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>`;
+        else if (iconType === 'Error') iconHtml = `<svg class="w-4 h-4 inline text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+        else iconHtml = `<svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+
+        logEntry.innerHTML = `<span class="text-gray-500 dark:text-gray-400">${timestamp}</span> <span class="text-blue-400">${iconHtml}</span> <span>${message}</span>`;
         ui.activityLog.appendChild(logEntry);
         ui.activityLog.scrollTop = ui.activityLog.scrollHeight;
     };
@@ -163,6 +180,66 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupBottomPanelTabs();
         setupResizer();
         setupSidebarToggle();
+        setupActivityBar();
+    }
+
+    const setupActivityBar = () => {
+        const showFiles = () => {
+            ui.fileExplorerView.classList.remove('hidden');
+            ui.historyView.classList.add('hidden');
+            ui.activityFilesBtn.classList.add('text-blue-500', 'dark:text-blue-400');
+            ui.activityFilesBtn.classList.remove('text-gray-500', 'dark:text-gray-400');
+            ui.activityHistoryBtn.classList.remove('text-blue-500', 'dark:text-blue-400');
+            ui.activityHistoryBtn.classList.add('text-gray-500', 'dark:text-gray-400');
+        };
+
+        const showHistory = () => {
+            ui.fileExplorerView.classList.add('hidden');
+            ui.historyView.classList.remove('hidden');
+            ui.activityFilesBtn.classList.remove('text-blue-500', 'dark:text-blue-400');
+            ui.activityFilesBtn.classList.add('text-gray-500', 'dark:text-gray-400');
+            ui.activityHistoryBtn.classList.add('text-blue-500', 'dark:text-blue-400');
+            ui.activityHistoryBtn.classList.remove('text-gray-500', 'dark:text-gray-400');
+            loadRoomHistory();
+        };
+
+        ui.activityFilesBtn.addEventListener('click', showFiles);
+        ui.activityHistoryBtn.addEventListener('click', showHistory);
+        ui.refreshHistoryBtn.addEventListener('click', loadRoomHistory);
+    };
+
+    async function loadRoomHistory() {
+        if (!state.currentUser) {
+             ui.historyList.innerHTML = '<div class="text-center text-gray-500 p-4">Please log in to view history.</div>';
+             return;
+        }
+
+        ui.historyList.innerHTML = '<div class="text-center text-gray-500 p-4">Loading...</div>';
+
+        try {
+            const res = await fetch('/api/user/rooms');
+            if (!res.ok) throw new Error('Failed to fetch history');
+            const data = await res.json();
+
+            if (data.rooms.length === 0) {
+                 ui.historyList.innerHTML = '<div class="text-center text-gray-500 p-4">No recent chats found.</div>';
+                 return;
+            }
+
+            ui.historyList.innerHTML = data.rooms.map(room => {
+                const isActive = room.id === state.currentRoomId;
+                const date = new Date(room.updatedAt).toLocaleDateString();
+                return `
+                <div class="flex flex-col p-2 rounded cursor-pointer ${isActive ? 'bg-blue-100 dark:bg-blue-900/30' : 'hover:bg-black/10 dark:hover:bg-white/10'}" onclick="window.location.href='/?room=${room.id}'">
+                    <span class="font-medium text-gray-800 dark:text-gray-200 truncate">${room.name || room.id}</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">${date}</span>
+                </div>`;
+            }).join('');
+
+        } catch (err) {
+            console.error(err);
+            ui.historyList.innerHTML = '<div class="text-center text-red-500 p-4">Error loading history.</div>';
+        }
     }
 
     const setupSidebarToggle = () => {
