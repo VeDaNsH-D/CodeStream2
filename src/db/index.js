@@ -17,6 +17,10 @@ Message.belongsTo(Room, { foreignKey: 'roomId' });
 User.hasMany(Message, { foreignKey: 'userId' });
 Message.belongsTo(User, { foreignKey: 'userId' });
 
+// Many-to-Many for Room Membership (History)
+User.belongsToMany(Room, { through: 'RoomMembers', as: 'joinedRooms' });
+Room.belongsToMany(User, { through: 'RoomMembers', as: 'members' });
+
 const initDB = async () => {
     try {
         await sequelize.authenticate();
