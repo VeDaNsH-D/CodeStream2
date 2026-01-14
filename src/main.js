@@ -1,10 +1,37 @@
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Auth Check
+    let currentUser = null;
+    try {
+        const res = await fetch('/auth/me');
+        if (res.ok) {
+            const data = await res.json();
+            currentUser = data.user;
+        }
+    } catch (err) {
+        console.error("Auth check failed", err);
+    }
+
+    // Redirect if not logged in
+    if (!currentUser && window.location.pathname !== '/login.html' && window.location.pathname !== '/signup.html') {
+        window.location.href = '/login.html';
+        return;
+    }
+
+    // If we are on login/signup page and logged in, redirect to root
+    if (currentUser && (window.location.pathname === '/login.html' || window.location.pathname === '/signup.html')) {
+        window.location.href = '/';
+        return;
+    }
+
+    // Only continue with editor logic if we are on the main app page
+    if (!document.getElementById('app')) return;
+
     const socket = io();
     let state = {
-        currentUser: null,
+        currentUser: currentUser,
         currentRoomId: null,
-        username: null,
+        username: currentUser ? currentUser.username : null,
         participants: {},
         files: {},
         openTabs: [],
@@ -55,6 +82,12 @@ document.addEventListener('DOMContentLoaded', () => {
         aiInput: document.getElementById('ai-input'),
         sendAiBtn: document.getElementById('send-ai-btn'),
     };
+
+    // Pre-fill username if logged in
+    if (state.currentUser && ui.usernameInput) {
+        ui.usernameInput.value = state.currentUser.username;
+        ui.usernameInput.disabled = true; // Don't allow changing username in temporary session if logged in
+    }
 
     // --- NEW THEME LOGIC ---
     function applyTheme(theme) {
@@ -198,9 +231,12 @@ document.addEventListener('DOMContentLoaded', () => {
         ui.app.classList.remove('hidden');
         ui.app.classList.add('flex');
         window.history.pushState(null, '', `?room=${roomId}`);
+
+        // Pass userId if authenticated
         if (socket.connected) socket.emit('join-room', {
             roomId: state.currentRoomId,
-            username: state.username
+            username: state.username,
+            userId: state.currentUser ? state.currentUser.id : null
         });
 
         // Set initial active tab styling manually since we removed the @apply block
@@ -546,15 +582,30 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('connect', () => {
         if (state.currentRoomId && state.username) socket.emit('join-room', {
             roomId: state.currentRoomId,
-            username: state.username
+            username: state.username,
+            userId: state.currentUser ? state.currentUser.id : null
         });
     });
 
     socket.on('initial-sync', (data) => {
         const isFirstSync = !state.editorInstance;
+        // Merge data, but handle chat history separately if needed or just replace
         Object.assign(state, data);
         renderFileExplorer();
         renderParticipants();
+
+        // Render Chat History
+        if (data.chatHistory) {
+             ui.chatMessages.innerHTML = '';
+             data.chatHistory.forEach(msg => {
+                 const messageEl = document.createElement('div');
+                 const color = msg.user.color || '#3b82f6'; // fallback color
+                 messageEl.innerHTML = `<div><b style="color:${color};">${msg.user.username}:</b> <span class="text-gray-700 dark:text-gray-300">${msg.message}</span></div>`;
+                 ui.chatMessages.appendChild(messageEl);
+             });
+             ui.chatMessages.scrollTop = ui.chatMessages.scrollHeight;
+        }
+
         if (isFirstSync) initializeEditor();
     });
 
