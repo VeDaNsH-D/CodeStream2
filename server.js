@@ -421,7 +421,7 @@ io.on('connection', (socket) => {
             const prompt = `Code Context:\n${context || 'No code provided.'}\n\nUser Question: ${message}`;
 
             const response = await axios.post(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${process.env.GOOGLE_API_KEY}`,
                 {
                     contents: [{
                         parts: [{ text: prompt }]
